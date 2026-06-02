@@ -1,0 +1,101 @@
+# slam_toolbox config for the RoboMaster CoppeliaSim setup (M2).
+# Based on slam_toolbox's mapper_params_online_async.yaml, with:
+#   - prefixed frames (rm0/odom, rm0/base_link) to match the bridge,
+#   - our scan topic (/rm0/scan),
+#   - use_sim_time true (everything runs on Coppelia's /clock),
+#   - distances tuned for a small (~4.8 m) room.
+#
+# NOTE: frames are hard-coded to the rm0 prefix here. For a different robot
+# name, copy this file and change odom_frame/base_frame, or template it later.
+slam_toolbox:
+  ros__parameters:
+    # Wall-clock throughout. The scan is restamped to wall time by the
+    # scan_restamp node (forcing the whole system onto sim time breaks the
+    # RoboMaster SDK connection), so SLAM stays on the default ROS clock.
+    use_sim_time: false
+
+    # Plugin params
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    # ROS / frame params — prefixed to match the bridge's TF tree.
+    odom_frame: rm0/odom
+    map_frame: map
+    base_frame: rm0/base_link
+    scan_topic: /rm0/scan_stamped   # wall-clock-restamped scan (see scan_restamp)
+    mode: mapping
+
+    debug_logging: false
+    throttle_scans: 1
+    transform_publish_period: 0.02
+    map_update_interval: 2.0          # update the map more often (small room)
+    resolution: 0.05                  # 5 cm cells
+    # Cap well above the room diagonal (4.8 m room -> ~3.4 m corner-to-corner
+    # from the centre, ~6.8 m max wall-to-wall) but FAR below the lidar's 20 m
+    # range_max. The lidar reports 20.0 for "no return"; if max_laser_range is
+    # also 20 those fill beams get fed into scan-matching and smear/ghost the
+    # walls (each pass registers at a slightly different angle). Capping at 5 m
+    # makes slam treat the 20 m beams as out-of-range and ignore them, which
+    # tightens registration and removes the doubled-wall artifact.
+    max_laser_range: 5.0
+    minimum_time_interval: 0.2        # accept scans more often (10 Hz lidar)
+    # transform_timeout is the tolerance slam_toolbox's tf2 MessageFilter uses
+    # when waiting for the scan-frame -> odom transform before accepting a scan.
+    # The filter has a queue of 1: if the transform isn't ready before the next
+    # scan arrives, the queued scan is evicted and SILENTLY DROPPED, so the map
+    # never builds (see slam_toolbox issue #516). With 0.0 the filter refuses to
+    # wait at all, so any sub-scan-period lag in the bridge's odom->base_link TF
+    # drops the scan. A small positive value lets it wait briefly for the
+    # bracketing transform. 0.2 s (= 2 scan periods at 10 Hz) is forgiving
+    # enough for the bridge's wall-clock TF without backing up the queue.
+    #
+    # NOTE: this is the LOOKUP tolerance for accepting input scans. It is NOT
+    # the validity window of the published map->odom output (a separate concern);
+    # don't set it to 0 to "keep map->odom at the scan time" — that just drops
+    # scans. The scan must already be on wall-clock (scan_restamp) for the lookup
+    # to ever succeed, regardless of this value.
+    transform_timeout: 0.2
+    tf_buffer_duration: 30.
+    stack_size_to_use: 40000000
+    enable_interactive_mode: true
+
+    # General Parameters. Travel thresholds lowered for a small room so the
+    # map updates on modest motions instead of needing 0.5 m hops.
+    use_scan_matching: true
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.2
+    minimum_travel_heading: 0.2
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+    loop_search_maximum_distance: 3.0
+    do_loop_closing: true
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    # Correlation Parameters
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+
+    # Loop Closure Parameters
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    # Scan Matcher Parameters
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true
